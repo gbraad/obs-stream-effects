@@ -127,6 +127,8 @@ namespace filter {
 
 			void video_tick(float);
 			void video_render(gs_effect_t*);
+
+			void notify_source_death(obs_source_t* source);
 		};
 
 		class factory {
@@ -168,8 +170,8 @@ namespace filter {
 			static void video_tick(void* source, float delta);
 			static void video_render(void* source, gs_effect_t* effect);
 
-			static void scene_create_handler(void* ptr, calldata_t* data);
-			static void scene_destroy_handler(void* ptr, calldata_t* data);
+			static void source_create_handler(void* ptr, calldata_t* data);
+			static void source_destroy_handler(void* ptr, calldata_t* data);
 
 			public:
 			std::shared_ptr<gs::effect> get_effect(filter::blur::type type);
