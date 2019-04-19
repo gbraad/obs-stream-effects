@@ -17,7 +17,6 @@
 
 # CMake Setup
 CMake_Minimum_Required(VERSION 3.8.0)
-Include("cmake/util.cmake")
 
 # Automatic Versioning
 Set(VERSION_MAJOR 0)
@@ -80,7 +79,11 @@ else()
 endif()
 
 # Search Path
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake" "${CMAKE_SOURCE_DIR}/cmake/modules")
+
+# Modules
+include("util")
+include("clang-tidy")
 
 ################################################################################
 # CMake / Compiler
@@ -381,7 +384,6 @@ target_include_directories(${PROJECT_NAME}
 	PRIVATE
 		"${PROJECT_BINARY_DIR}/source"
 		"${PROJECT_SOURCE_DIR}/source"
-		${FFMPEG_INCLUDE_DIRS}
 )
 
 # OBS Studio
@@ -406,6 +408,10 @@ elseif(${PropertyPrefix}OBS_PACKAGE)
 		libobs
 	)
 elseif(${PropertyPrefix}OBS_DOWNLOAD)
+	target_include_directories(${PROJECT_NAME}
+		PRIVATE
+			"${LIBOBS_INCLUDE_DIRS}"
+	)
 	target_link_libraries(${PROJECT_NAME}
 		libobs
 	)
@@ -493,6 +499,62 @@ else()
 endif()
 
 ################################################################################
+# Code Validation
+################################################################################
+
+if(NOT ${PropertyPrefix}OBS_NATIVE)
+	# obs-studio has it's own validation and formatting, don't interfere.
+
+	if(CLANG_TIDY_FOUND)
+		set(_sources "")
+		set(_source_filter ".*\.(c|cpp)$")
+		
+		get_target_property(_private_sources ${PROJECT_NAME} SOURCES)
+		if(_private_sources)
+			foreach(_source ${_private_sources})
+				if("${_source}" MATCHES ${_source_filter})
+					list(APPEND _sources ${_source})
+				endif()
+			endforeach()
+			unset(_private_sources)
+		endif()
+		
+		get_target_property(_private_sources ${PROJECT_NAME} INTERFACE_SOURCES)
+		if(_private_sources)
+			foreach(_source ${_private_sources})
+				if("${_source}" MATCHES ${_source_filter})
+					list(APPEND _sources ${_source})
+				endif()
+			endforeach()
+			unset(_private_sources)
+		endif()
+		
+		get_target_property(_include_directories ${PROJECT_NAME} INCLUDE_DIRECTORIES)
+		list(JOIN _include_directories ";-extra-arg-before=-I" _includes)
+		
+		add_custom_target(
+			CLANG_TIDY
+			COMMAND "${CLANG_TIDY_BIN}" -extra-arg-before=-I${_includes};-header-filter="${CMAKE_CURRENT_SOURCE_DIR}/source/*";${_sources}
+			WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+			DEPENDS ${PROJECT_NAME}
+			COMMAND_EXPAND_LISTS
+		)
+		add_custom_target(
+			CLANG_TIDY_FIX
+			COMMAND "${CLANG_TIDY_BIN}" -extra-arg-before=-I${_includes};-header-filter="${CMAKE_CURRENT_SOURCE_DIR}/source/*";${_sources};-fix
+			WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+			DEPENDS ${PROJECT_NAME}
+			COMMAND_EXPAND_LISTS
+		)
+		
+		unset(_source_filter)
+		unset(_sources)
+		unset(_include_directories)
+		unset(_includes)
+	endif()
+endif()
+
+################################################################################
 # Installation
 ################################################################################
 
@@ -529,6 +591,7 @@ else()
 			"${CMAKE_INSTALL_PREFIX}/obs-plugins"
 			"${CMAKE_INSTALL_PREFIX}/data"
 		WORKING_DIRECTORY "${CMAKE_INSTALL_PREFIX}"
+		DEPENDS INSTALL
 	)
 	add_custom_target(
 		PACKAGE_ZIP
@@ -536,5 +599,6 @@ else()
 			"${CMAKE_INSTALL_PREFIX}/obs-plugins"
 			"${CMAKE_INSTALL_PREFIX}/data"
 		WORKING_DIRECTORY "${CMAKE_INSTALL_PREFIX}"
+		DEPENDS INSTALL
 	)
 endif()
